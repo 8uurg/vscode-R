@@ -1,10 +1,11 @@
 "use strict";
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { commands, ExtensionContext, languages, Position, Range, window, workspace} from "vscode";
+import { commands, ExtensionContext, languages, Position, Range, window, workspace, Selection } from "vscode";
 import { createGitignore } from "./rGitignore";
 import { installLintr, lintr } from "./rLint";
 import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
+import { SectionCodeLensProvider } from "./rSectionLens";
 import { checkForSpecialCharacters, checkIfFileExists, config, delay } from "./util";
 
 import fs = require("fs-extra");
@@ -111,6 +112,29 @@ export function activate(context: ExtensionContext) {
             rTerm.sendText(line);
         }
         setFocus();
+    }
+
+    async function runLineRange(range: Range) {
+        if (!rTerm) {
+            const success = createRTerm(true);
+            if (!success) { return; }
+            await delay (200); // Let RTerm warm up
+        }
+        const document = window.activeTextEditor.document;
+        
+        const lines = document.getText(range).split('\n');
+       
+        for (const line of lines) {
+            if (checkForComment(line)) { continue; }
+            await delay(8); // Increase delay if RTerm can't handle speed.
+            rTerm.sendText(line);
+        }
+        setFocus();
+    }
+
+    async function runSectionAndGoToNext(range: Range, nextPosition: Position) {
+        runLineRange(range);
+        window.activeTextEditor.selections = [new Selection(nextPosition, nextPosition)];
     }
 
     function setFocus() {
@@ -249,6 +273,9 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.previewDataframe", previewDataframe),
         commands.registerCommand("r.previewEnvironment", previewEnvironment),
         commands.registerCommand("r.installLintr", installLintr),
+        commands.registerCommand("r.runSection", runLineRange),
+        commands.registerCommand("r.runSectionGoToNext", runSectionAndGoToNext),
+        languages.registerCodeLensProvider('r', new SectionCodeLensProvider()),
         workspace.onDidSaveTextDocument(lintr),
         window.onDidCloseTerminal(deleteTerminal),
     );
